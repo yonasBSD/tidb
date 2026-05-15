@@ -2405,6 +2405,10 @@ var defaultSysVars = []*SysVar{
 		s.IndexJoinCostFactor = tidbOptFloat64(val, vardef.DefOptIndexJoinCostFactor)
 		return nil
 	}},
+	{Scope: vardef.ScopeGlobal | vardef.ScopeSession, Name: vardef.TiDBOptIndexJoinMaxScanRowsRatio, Value: strconv.FormatFloat(vardef.DefOptIndexJoinMaxScanRowsRatio, 'f', -1, 64), Type: vardef.TypeFloat, MinValue: 0, MaxValue: math.MaxUint64, SetSession: func(s *SessionVars, val string) error {
+		s.IndexJoinMaxScanRowsRatio = tidbOptFloat64(val, vardef.DefOptIndexJoinMaxScanRowsRatio)
+		return nil
+	}},
 	{Scope: vardef.ScopeGlobal | vardef.ScopeSession, Name: vardef.TiDBOptSelectivityFactor, Value: strconv.FormatFloat(vardef.DefOptSelectivityFactor, 'f', -1, 64), Type: vardef.TypeFloat, MinValue: 0, MaxValue: 1, SetSession: func(s *SessionVars, val string) error {
 		s.SelectivityFactor = tidbOptFloat64(val, vardef.DefOptSelectivityFactor)
 		return nil
@@ -2674,24 +2678,31 @@ var defaultSysVars = []*SysVar{
 		s.NoopFuncsMode = TiDBOptOnOffWarn(val)
 		return nil
 	}},
-	{Scope: vardef.ScopeGlobal | vardef.ScopeSession, Name: vardef.TiDBReplicaRead, Value: "leader", Type: vardef.TypeEnum, PossibleValues: []string{"leader", "prefer-leader", "follower", "leader-and-follower", "closest-replicas", "closest-adaptive", "learner"}, SetSession: func(s *SessionVars, val string) error {
-		if strings.EqualFold(val, "follower") {
-			s.SetReplicaRead(kv.ReplicaReadFollower)
-		} else if strings.EqualFold(val, "leader-and-follower") {
-			s.SetReplicaRead(kv.ReplicaReadMixed)
-		} else if strings.EqualFold(val, "leader") || len(val) == 0 {
-			s.SetReplicaRead(kv.ReplicaReadLeader)
-		} else if strings.EqualFold(val, "closest-replicas") {
-			s.SetReplicaRead(kv.ReplicaReadClosest)
-		} else if strings.EqualFold(val, "closest-adaptive") {
-			s.SetReplicaRead(kv.ReplicaReadClosestAdaptive)
-		} else if strings.EqualFold(val, "learner") {
-			s.SetReplicaRead(kv.ReplicaReadLearner)
-		} else if strings.EqualFold(val, "prefer-leader") {
-			s.SetReplicaRead(kv.ReplicaReadPreferLeader)
-		}
-		return nil
-	}},
+	{Scope: vardef.ScopeGlobal | vardef.ScopeSession, Name: vardef.TiDBReplicaRead, Value: "leader", Type: vardef.TypeEnum, PossibleValues: []string{"leader", "prefer-leader", "follower", "leader-and-follower", "closest-replicas", "closest-adaptive", "learner"},
+		Validation: func(_ *SessionVars, val string, _ string, _ vardef.ScopeFlag) (string, error) {
+			if kerneltype.IsNextGen() && !strings.EqualFold(val, "leader") && len(val) > 0 {
+				return "leader", ErrNotSupportedInNextGen.FastGenByArgs(vardef.TiDBReplicaRead)
+			}
+			return val, nil
+		},
+		SetSession: func(s *SessionVars, val string) error {
+			if strings.EqualFold(val, "follower") {
+				s.SetReplicaRead(kv.ReplicaReadFollower)
+			} else if strings.EqualFold(val, "leader-and-follower") {
+				s.SetReplicaRead(kv.ReplicaReadMixed)
+			} else if strings.EqualFold(val, "leader") || len(val) == 0 {
+				s.SetReplicaRead(kv.ReplicaReadLeader)
+			} else if strings.EqualFold(val, "closest-replicas") {
+				s.SetReplicaRead(kv.ReplicaReadClosest)
+			} else if strings.EqualFold(val, "closest-adaptive") {
+				s.SetReplicaRead(kv.ReplicaReadClosestAdaptive)
+			} else if strings.EqualFold(val, "learner") {
+				s.SetReplicaRead(kv.ReplicaReadLearner)
+			} else if strings.EqualFold(val, "prefer-leader") {
+				s.SetReplicaRead(kv.ReplicaReadPreferLeader)
+			}
+			return nil
+		}},
 	{Scope: vardef.ScopeGlobal | vardef.ScopeSession, Name: vardef.TiDBAdaptiveClosestReadThreshold, Value: strconv.Itoa(vardef.DefAdaptiveClosestReadThreshold), Type: vardef.TypeUnsigned, MinValue: 0, MaxValue: math.MaxInt64, SetSession: func(s *SessionVars, val string) error {
 		s.ReplicaClosestReadThreshold = TidbOptInt64(val, vardef.DefAdaptiveClosestReadThreshold)
 		return nil
@@ -3797,6 +3808,12 @@ var defaultSysVars = []*SysVar{
 			return nil
 		}},
 	{Scope: vardef.ScopeSession, Name: vardef.TiDBDMLType, Value: vardef.DefTiDBDMLType, Type: vardef.TypeStr,
+		Validation: func(_ *SessionVars, val string, _ string, _ vardef.ScopeFlag) (string, error) {
+			if kerneltype.IsNextGen() && strings.EqualFold(val, "bulk") {
+				return vardef.DefTiDBDMLType, ErrNotSupportedInNextGen.FastGenByArgs(vardef.TiDBDMLType)
+			}
+			return val, nil
+		},
 		SetSession: func(s *SessionVars, val string) error {
 			lowerVal := strings.ToLower(val)
 			if strings.EqualFold(lowerVal, "standard") {
